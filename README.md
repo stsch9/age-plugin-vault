@@ -63,7 +63,7 @@ Generate an identity string (key name) that can be used with `age` for encryptio
 ./age-plugin-vault -generate my-keyname
 ```
 
-The output is an `age` identity (bech32-encoded) for this plugin, e.g. `age-plugin-vault-...`.
+The output is an `age` identity (bech32-encoded) for this plugin, e.g. `AGE-PLUGIN-VAULT-...`.
 
 ---
 
