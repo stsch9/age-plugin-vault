@@ -34,7 +34,7 @@ Ensure that `age-plugin-vault` is stored in a directory that is included in the 
 
 ---
 
-## 🔐 Configure Vault
+## 🔧 Configure Vault
 
 1. Enable the Transit engine (if not already enabled):
 
@@ -54,7 +54,7 @@ Only use key types that support encryption.
 
 ---
 
-## 🔐 Generate an Identity / Recipient
+## 🔧 Generate an Identity / Recipient
 The name of the vault key is used as the age identity.
 Generate an identity string (key name) that can be used with `age` for encryption/decryption:
 
@@ -68,7 +68,7 @@ The output is an `age` identity (bech32-encoded) for this plugin, e.g. `age-plug
 ---
 
 
-## ✉️ Encrypt & Decrypt with `age`
+## 🔐 Encrypt & Decrypt with `age`
 
 - Encrypt (use the identity):
 
