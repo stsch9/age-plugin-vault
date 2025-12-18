@@ -3,7 +3,7 @@
 > [!WARNING]
 > This is currently an experimental plugin.
 
-**age-plugin-vault** is a plugin for the `age` encryption tool that uses HashiCorp Vault's Transit secrets engine to encrypt and decrypt the age [file key](https://github.com/C2SP/C2SP/blob/main/age.md#file-key).
+**age-plugin-vault** is a plugin for the [age](https://github.com/FiloSottile/age) encryption tool that uses HashiCorp Vault's Transit secrets engine to encrypt and decrypt the age [file key](https://github.com/C2SP/C2SP/blob/main/age.md#file-key).
 
 ---
 
@@ -54,7 +54,7 @@ Only use key types that support encryption.
 
 ---
 
-## 🧾 Generate an Identity / Recipient
+## 🔐 Generate an Identity / Recipient
 The name of the vault key is used as the age identity.
 Generate an identity string (key name) that can be used with `age` for encryption/decryption:
 
