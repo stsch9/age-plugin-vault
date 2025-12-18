@@ -1,4 +1,4 @@
-module example/age-plugin-vault
+module github.com/stsch9/age-plugin-vault
 
 go 1.25.5
 
