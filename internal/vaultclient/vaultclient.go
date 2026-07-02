@@ -6,8 +6,12 @@ import (
 	"os"
 	"strings"
 
+	"github.com/stsch9/age-plugin-vault/internal/keyring"
+
 	vault "github.com/hashicorp/vault/api"
 )
+
+const keyringPrefix = "keyring:"
 
 func loadVaultToken() (string, error) {
 	home, err := os.UserHomeDir()
@@ -19,6 +23,10 @@ func loadVaultToken() (string, error) {
 	token, err := os.ReadFile(tokenPath)
 	if err != nil {
 		return "", fmt.Errorf("unable to read vault token from %s: %v", tokenPath, err)
+	}
+
+	if after, ok := strings.CutPrefix(string(token), keyringPrefix); ok {
+		return readKeyFromKeyring(after)
 	}
 
 	return strings.TrimSpace(string(token)), nil
@@ -39,4 +47,20 @@ func VaultClient() (*vault.Client, error) {
 	client.SetToken(token)
 
 	return client, nil
+}
+
+func readKeyFromKeyring(spec string) (string, error) {
+	parts := strings.SplitN(spec, ":", 2)
+	if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
+		return "", fmt.Errorf("invalid keyring spec %q (expected: keyring:<scope>:<description>)", spec)
+	}
+
+	scope, description := parts[0], strings.TrimSpace(parts[1])
+
+	value, err := keyring.ReadKeyringValue(scope, description)
+	if err != nil {
+		return "", err
+	}
+
+	return strings.TrimSpace(value), nil
 }
