@@ -11,9 +11,13 @@
 
 - Go (1.20+ recommended)
 - A running HashiCorp Vault server with the `transit` engine enabled
-- A Vault token available in `~/.vault-token`
+- A Vault token available in `~/.vault-token`, or on Linux a keyring reference in `~/.vault-token`
 
 > Note: The Vault client uses `vault.DefaultConfig()`. If Vault is not at `http://127.0.0.1:8200`, set Vault environment variable `VAULT_ADDR` accordingly.
+>
+> Linux keyring usage example: write `keyring:<scope>:<description>` into `~/.vault-token` and store the token in the corresponding keyring scope. Supported scopes are `process`, `session`, and `user`.
+>
+> Example: `keyring:process:my-vault-token` reads the vault token from the current process keyring entry with description `my-vault-token`.
 
 ---
 
