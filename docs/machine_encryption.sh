@@ -60,3 +60,15 @@ fi
 # - tr: removes newlines
 # - keyctl padd: stores the resulting Vault token in the kernel keyring
 keyctl print "$KEY_ID" | vault write -field=token auth/approle/login role_id="$ROLE_ID" secret_id=- | keyctl padd user vault_token @s
+
+echo "keyring:session:vault_token" > ~/.vault-token
+
+echo "Vault authentication successful. Token stored in kernel keyring."
+echo "Generating identity.txt file ..."
+age-plugin-vault -generate my-transit-key > identity.txt
+
+age -e -i identity.txt -o go.sum.age go.sum
+echo "Encrypted go.sum file created: go.sum.age"
+
+echo "Decrypting go.sum.age file ..."
+age -d -i identity.txt go.sum.age

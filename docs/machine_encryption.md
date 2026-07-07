@@ -6,9 +6,51 @@ This guide demonstrates a secure workflow for managing machine credentials using
 
 ### Reference Documentation
 
-- [AppRole Authentication Pattern](https://developer.hashicorp.com/vault/docs/auth/approle/approle-pattern#usage-workflow)
+- [Best practices for AppRole authentication](https://developer.hashicorp.com/vault/docs/auth/approle/approle-pattern#usage-workflow)
 - [Linux Keyring Introduction](https://blog.cloudflare.com/the-linux-kernel-key-retention-service-and-why-you-should-use-it-in-your-next-application/)
 - [Secrets Management in Command Line](https://smallstep.com/blog/command-line-secrets/)
+
+### Workflow Diagram
+
+```mermaid
+sequenceDiagram
+    actor Admin as Admin/CI
+    participant Vault
+    participant Keyring as Linux Keyring
+    actor Machine as Target Machine
+
+    Note over Admin,Machine: Part 1: Setup (Trusted Party)
+    
+    Admin->>Vault: 1. Create AppRole
+    Admin->>Vault: 2. Read RoleID
+    Vault-->>Admin: RoleID
+    
+    Admin->>Vault: 3. Generate Secret ID
+    Vault-->>Admin: Secret ID
+    
+    Admin->>Vault: 4. Store Secret ID in Cubbyhole
+    
+    Admin->>Vault: 5. Wrap Secret with Response Wrapping
+    Vault-->>Admin: wrapping_token (TTL: 120s)
+    
+    Note over Admin,Machine: Part 2: Machine Bootstrap
+    
+    Admin-->>Machine: 6. Pass wrapping_token via secure channel
+    
+    Machine->>Vault: 7. vault unwrap wrapping_token
+    Vault-->>Machine: Secret ID
+    
+    Machine->>Keyring: 8. Store Secret ID in keyring
+    Keyring-->>Machine: ✓ Stored
+    
+    Machine->>Vault: 9. Login with RoleID + Secret ID (from keyring)
+    Vault-->>Machine: Vault Token
+    
+    Machine->>Keyring: 10. Store Vault Token in keyring
+    Keyring-->>Machine: ✓ Stored
+    
+    Note over Machine: Machine ready for Vault operations
+```
 
 ---
 
@@ -29,7 +71,7 @@ vault write auth/approle/role/my-role \
     token_ttl=20m \
     token_max_ttl=30m \
     token_num_uses=0 \
-    token_policies=default,key1 \
+    token_policies=my-key-policy \
     token_bound_cidrs="0.0.0.0/0"
 ```
 
@@ -39,6 +81,18 @@ vault write auth/approle/role/my-role \
 - `token_type=batch` - Lightweight, short-lived tokens
 
 For detailed configuration options, see [Vault API Documentation](https://developer.hashicorp.com/vault/api-docs/auth/approle#create-update-approle).
+
+In addition, the `my-key-policy` vault policy must exist and contain at least the following entries:
+```bash
+path "transit/encrypt/my-transit-key" {
+  capabilities = ["create", "update"]
+}
+
+path "transit/decrypt/my-transit-key" {
+  capabilities = ["create", "update"]
+}
+```
+where `my-transit-key` is the encryption/decryption key in the vault transit engine.
 
 ### Step 1.2: Retrieve RoleID
 
@@ -127,7 +181,7 @@ vault unwrap -format=json s.1234567890abcdef | jq -r '.data.secret_id' | tr -d '
 Using the stored Secret ID and the RoleID, authenticate to Vault and store the resulting token:
 
 ```bash
-keyctl print "$KEY_ID" | vault write -field=token auth/approle/login role_id="$ROLE_ID" secret_id=- | keyctl padd user vault_token @s
+keyctl print "$KEY_ID" | vault write -field=token auth/approle/login role_id="$ROLE_ID" secret_id=- | keyctl padd user vault_token @u
 ```
 
 **What this command does:**
@@ -136,7 +190,7 @@ keyctl print "$KEY_ID" | vault write -field=token auth/approle/login role_id="$R
 3. `-field=token` - Extracts only the token from the response
 4. `keyctl padd user vault_token @s` - Stores the new Vault token in the keyring
 
-**Result:** The machine now has a Vault token stored securely in the Linux keyring, ready for accessing vault secrets.
+**Result:** The machine now has a Vault token stored securely in the Linux keyring, ready for using with `age-plugin-vault`. For the Machine Part, there is a sample Bash script named `machine_encryption.sh` in this directory.
 
 ---
 
