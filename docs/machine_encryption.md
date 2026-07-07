@@ -190,7 +190,31 @@ keyctl print "$KEY_ID" | vault write -field=token auth/approle/login role_id="$R
 3. `-field=token` - Extracts only the token from the response
 4. `keyctl padd user vault_token @s` - Stores the new Vault token in the keyring
 
-**Result:** The machine now has a Vault token stored securely in the Linux keyring, ready for using with `age-plugin-vault`. For the Machine Part, there is a sample Bash script named `machine_encryption.sh` in this directory.
+**Result:** The machine now has a Vault token stored securely in the Linux keyring, ready for using with `age-plugin-vault`. 
+
+### Step 2.3 Encrypting/Decrypting Data with the age-plugin-vault
+
+Preparing `.vault-token` file
+```bash
+echo "keyring:user:vault_token" > ~/.vault-token
+```
+
+Generating identity.txt file
+```bash
+age-plugin-vault -generate my-transit-key > identity.txt
+```
+
+Encrypting data
+```bash
+age -e -i identity.txt -o file.age file
+```
+
+Decrypting data
+```bash
+age -d -i identity.txt file.age
+```
+
+**Note:** For the Machine Part, there is a sample Bash script named `machine_encryption.sh` in this directory.
 
 ---
 
