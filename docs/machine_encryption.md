@@ -1,9 +1,24 @@
-https://developer.hashicorp.com/vault/docs/auth/approle/approle-pattern#usage-workflow
+# Machine Encryption with HashiCorp Vault
 
-# Trusted Party
+## Overview
 
-## Approle erstellen
-Erstelle eine neue AppRole mit den folgenden Parametern. Weitere Details: [Vault API Docs - Create/Update AppRole](https://developer.hashicorp.com/vault/api-docs/auth/approle#create-update-approle)
+This guide demonstrates a secure workflow for managing machine credentials using HashiCorp Vault's AppRole authentication and Response Wrapping mechanisms combined with Linux Keyring for local secret storage.
+
+### Reference Documentation
+
+- [AppRole Authentication Pattern](https://developer.hashicorp.com/vault/docs/auth/approle/approle-pattern#usage-workflow)
+- [Linux Keyring Introduction](https://blog.cloudflare.com/the-linux-kernel-key-retention-service-and-why-you-should-use-it-in-your-next-application/)
+- [Secrets Management in Command Line](https://smallstep.com/blog/command-line-secrets/)
+
+---
+
+## Part 1: Trusted Party (Admin/CI Setup)
+
+This section covers the initial setup performed by a trusted administrator or CI system.
+
+### Step 1.1: Create AppRole
+
+Create a new AppRole with controlled permissions and TTL settings. The AppRole grants limited-lifetime tokens to machines.
 
 ```bash
 vault write auth/approle/role/my-role \
@@ -18,108 +33,144 @@ vault write auth/approle/role/my-role \
     token_bound_cidrs="0.0.0.0/0"
 ```
 
-## RoleID abrufen
+**Key Settings:**
+- `token_ttl=20m` - Token expires after 20 minutes
+- `token_max_ttl=30m` - Maximum lifetime cap
+- `token_type=batch` - Lightweight, short-lived tokens
+
+For detailed configuration options, see [Vault API Documentation](https://developer.hashicorp.com/vault/api-docs/auth/approle#create-update-approle).
+
+### Step 1.2: Retrieve RoleID
+
+Extract the RoleID (stable identifier for the AppRole):
+
 ```bash
 vault read auth/approle/role/my-role/role-id
 ```
 
-## Secret ID generieren
+### Step 1.3: Generate Secret ID
+
+Create a Secret ID (acts as a password for this particular authentication):
+
 ```bash
 vault write -f auth/approle/role/my-role/secret-id
 ```
 
-Hier ein vollständiges Beispiel für HashiCorp Vault **Cubbyhole** – inklusive Secret eintragen, Response Wrapping und Abruf über den Wrapped Token.
+### Step 1.4: Store Secret in Cubbyhole with Response Wrapping
 
-## 1. Secret in den Cubbyhole eintragen
+The Cubbyhole and Response Wrapping provide the secure channel for delivering the Secret ID to the machine.
 
-Der `cubbyhole`-Secret-Engine ist token-gebunden – jedes Token hat seinen eigenen privaten Cubbyhole. Secrets liegen also nur für genau das Token sichtbar vor, das sie geschrieben hat.
+**Understanding Cubbyhole:**
+The `cubbyhole` secret engine in Vault is token-bound, meaning each token has its own isolated storage space. Secrets stored here are completely private to the token that created them—no other token can access them, providing strong isolation.
 
-```bash
-vault write cubbyhole/mein-secret secret_id=SECRET_ID
-```
-
-Auslesen (nur mit demselben Token möglich):
+**Store the Secret ID:**
 
 ```bash
-vault read cubbyhole/mein-secret
+vault write cubbyhole/my-secret secret_id=SECRET_ID
 ```
 
-Ausgabe:
+**Verify (with same token):**
+
+```bash
+vault read cubbyhole/my-secret
+```
+
+Expected output:
 ```
 Key         Value
 ---         -----
 secret_id   SECRET_ID
 ```
 
-## 2. Response Wrapping – Secret „einwickeln"
+### Step 1.5: Wrap the Secret (Response Wrapping)
 
-Beim Response Wrapping erzeugt Vault einen **einmalig verwendbaren Wrapping-Token**. Die eigentliche Antwort wird in einem temporären Cubbyhole abgelegt und kann nur **ein einziges Mal** über diesen Token entpackt werden. Der `-wrap-ttl` legt die Gültigkeitsdauer fest.
-
-**Variante A – ein bestehendes Secret wrappen (z. B. aus dem KV-Store):**
+Response Wrapping creates a **single-use, time-limited wrapping token** that protects the secret during transmission.
 
 ```bash
-vault kv get -wrap-ttl=120s cubbyhole/mein-secret
+vault kv get -wrap-ttl=120s cubbyhole/my-secret
 ```
 
-**Variante B – beliebige Daten direkt gewrappt schreiben:**
+**What happens:**
+1. Vault stores the secret data in a temporary, secure location
+2. Vault returns a `wrapping_token` instead of the actual secret
+3. The actual secret is NOT exposed in plain text
+4. Only this wrapping token can retrieve the secret—and only ONCE
+5. The token expires in 120 seconds
 
-```bash
-vault write -wrap-ttl=120s cubbyhole/transfer secret_id=SECRET_ID
-```
+**Next Steps:**
+Pass the `wrapping_token` value to the machine via a secure channel (e.g., cloud-init, configuration management, or secure file transfer). The machine will use this token to unwrap and retrieve the actual Secret ID.
 
-Ausgabe (gekürzt):
-```
-Key                              Value
----                              -----
-wrapping_token:                  hvs.CAESIJ...abcdef
-wrapping_accessor:               GjykuM...
-wrapping_token_ttl:              2m
-wrapping_token_creation_time:    2026-06-29 09:53:00 +0200
-wrapping_token_creation_path:    cubbyhole/transfer
-```
+---
 
-Der Wert `wrapping_token` ist das, was du dem Empfänger übergibst (z. B. über einen sicheren Kanal). Die eigentlichen Daten sind darin **nicht** im Klartext enthalten.
+## Part 2: Machine (Client/Application)
 
-# Machine
+This section covers the secure retrieval of credentials on the target machine.
 
-## 3. Secret über den Wrapped Token abrufen (unwrap)
+### Step 2.1: Unwrap and Store Secret ID in Linux Keyring
 
-Der Empfänger löst den Wrapping-Token mit `vault unwrap` ein:
+On the machine, use the wrapping token to retrieve and secure the Secret ID:
 
 ```bash
 vault unwrap -format=json s.1234567890abcdef | jq -r '.data.secret_id' | tr -d '\n' | keyctl padd user secret_id @u
 ```
 
-Alternativ über die Umgebungsvariable bzw. das aktuelle Token:
+**What this command does:**
+1. `vault unwrap` - Decrypts the wrapping token and retrieves the actual secret
+2. `jq -r '.data.secret_id'` - Extracts the secret_id value from the JSON response
+3. `tr -d '\n'` - Removes trailing newlines
+4. `keyctl padd user secret_id @u` - Stores the secret in the Linux keyring under user space
+
+**Important:** This unwrap operation consumes the token. Any subsequent attempt to unwrap the same token will fail.
+
+### Step 2.2: Authenticate with AppRole and Store Vault Token
+
+Using the stored Secret ID and the RoleID, authenticate to Vault and store the resulting token:
 
 ```bash
-VAULT_TOKEN=hvs.CAESIJ...abcdef vault unwrap
+keyctl print "$KEY_ID" | vault write -field=token auth/approle/login role_id="$ROLE_ID" secret_id=- | keyctl padd user vault_token @s
 ```
 
-Ausgabe:
+**What this command does:**
+1. `keyctl print "$KEY_ID"` - Retrieves the Secret ID from the Linux keyring
+2. `vault write auth/approle/login` - Authenticates using AppRole credentials
+3. `-field=token` - Extracts only the token from the response
+4. `keyctl padd user vault_token @s` - Stores the new Vault token in the keyring
+
+**Result:** The machine now has a Vault token stored securely in the Linux keyring, ready for accessing vault secrets.
+
+---
+
+## Security Features & Characteristics
+
+### ✓ Single-Use Protection
+A wrapping token can be **unwrapped exactly once**. A second unwrap attempt will fail with an error:
 ```
-Key         Value
----         -----
-secret_id   SECRET_ID
+Error unwrapping: wrapping token is not valid or does not exist
+```
+This prevents replay attacks and detects unauthorized access attempts.
+
+### ✓ TTL Expiration
+If the wrapping token is not unwrapped within the specified `-wrap-ttl` period (e.g., 120 seconds), it automatically expires and becomes worthless. The underlying secret is deleted after expiration.
+
+### ✓ Tamper Detection
+If an attacker intercepts and unwraps the token before the legitimate machine, the legitimate unwrap will fail. This immediately alerts you that a security breach has occurred.
+
+### ✓ Verify Token Validity (Without Unwrapping)
+Check if a token is still valid without consuming it:
+```bash
+vault token lookup -accessor GjykuM...
 ```
 
-## Mit role_id und secret_id vault token holen
-```
-echo "$SECRET_ID" | vault write -field=token auth/approle/login role_id="<ROLE_ID>" secret_id=-
-```
-## Wichtige Eigenschaften / Sicherheitsmerkmale
+---
 
-- **Single-Use:** Ein Wrapping-Token kann nur **einmal** entpackt werden. Ein zweiter `unwrap`-Versuch schlägt fehl:
-  ```
-  Error unwrapping: wrapping token is not valid or does not exist
-  ```
-- **TTL-Ablauf:** Wird der Token nicht innerhalb der `-wrap-ttl` eingelöst, verfällt er automatisch und die Daten werden gelöscht.
-- **Tamper-Erkennung:** Wurde der Token bereits benutzt (z. B. abgefangen und ausgelesen), erkennt der legitime Empfänger das sofort, weil sein `unwrap` fehlschlägt.
-- **Gültigkeit prüfen** (ohne zu entpacken), z. B. über den Accessor:
-  ```bash
-  vault token lookup -accessor GjykuM...
-  ```
+## Typical Use Case: Secure Introduction
 
-## Typischer Anwendungsfall
+Response Wrapping implements the **Secure Introduction** pattern:
 
-Response Wrapping wird häufig für **sichere Secret-Übergabe** verwendet (Secure Introduction): Ein vertrauenswürdiges System (z. B. CI/CD oder ein Admin) erzeugt den Wrapping-Token und reicht ihn an eine Applikation/VM weiter. Diese entpackt ihn beim Start genau einmal. So muss das langlebige Secret nie im Klartext durch Logs, Pipelines oder Konfigurationsdateien wandern.
+1. **Admin/CI System** creates a wrapping token containing the Secret ID
+2. **Admin/CI System** passes the wrapping token to the machine via a secure channel (cloud-init, configuration management, etc.)
+3. **Machine** receives the token at startup and immediately unwraps it
+4. **Machine** stores the Secret ID in the keyring for later use
+5. **Machine** uses the Secret ID to authenticate to Vault and obtain a working token
+
+**Key Benefit:** The actual Secret ID and Vault tokens never need to be stored in plain text in logs, configuration files, or environment variables. They exist only in memory and the Linux keyring.

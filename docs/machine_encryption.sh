@@ -13,25 +13,31 @@
 set -euo pipefail
 
 # Usage:
-#   ./machine_encryption.sh <wrapping-token>
+#   ./machine_encryption.sh <role-id> <wrapping-token>
 #
 # Example:
-#   ./machine_encryption.sh s.1234567890abcdef
+#   ./machine_encryption.sh 2aa0d2bf-196c-f03f-9d8b-e42d448762a4 s.1234567890abcdef
 
 # AppRole role ID - identifies the application role in Vault
-# Can be overridden via ROLE_ID environment variable
-ROLE_ID="${ROLE_ID:-2aa0d2bf-196c-f03f-9d8b-e42d448762a4}"
+# Passed as the first positional parameter
+ROLE_ID="${1:-}"
 
-# Wrapping token passed as first argument - contains the secret ID
+# Wrapping token passed as the second positional parameter - contains the secret ID
 # This is a single-use token that unwraps to the secret ID
-WRAP_TOKEN="${1:-}"
+WRAP_TOKEN="${2:-}"
 
-# Validate that wrapping token was provided
-if [[ -z "${WRAP_TOKEN}" ]]; then
-  echo "Usage: $0 <wrapping-token>"
+# Validate that both required parameters were provided
+if [[ -z "${ROLE_ID}" || -z "${WRAP_TOKEN}" ]]; then
+  echo "Usage: $0 <role-id> <wrapping-token>"
   echo ""
   echo "The wrapping-token is a single-use Vault token that contains the secret ID."
   echo "Obtain it from your Vault administrator."
+  exit 1
+fi
+
+# Ensure Vault address is configured
+if [[ -z "${VAULT_ADDR:-}" ]]; then
+  echo "VAULT_ADDR is not set. Please export VAULT_ADDR before running this script."
   exit 1
 fi
 
@@ -41,6 +47,11 @@ fi
 # - tr: removes newline characters
 # - keyctl padd: stores the secret ID in the Linux kernel keyring under the 'user' namespace
 KEY_ID=$(vault unwrap -format=json "$WRAP_TOKEN" | jq -r '.data.secret_id' | tr -d '\n' | keyctl padd user secret_id @s)
+
+if [[ -z "${KEY_ID:-}" ]]; then
+  echo "Failed to retrieve a secret ID from the wrapping token."
+  exit 1
+fi
 
 # Step 2: Authenticate to Vault using AppRole authentication method
 # - keyctl print: retrieves the secret ID from the kernel keyring
