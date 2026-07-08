@@ -3,7 +3,7 @@
 > [!WARNING]
 > This is currently an experimental plugin.
 
-**age-plugin-vault** is a plugin for the [age](https://github.com/FiloSottile/age) encryption tool that uses [HashiCorp Vault's Transit secrets engine](https://developer.hashicorp.com/vault/docs/secrets/transit) to encrypt and decrypt the age [file key](https://github.com/C2SP/C2SP/blob/main/age.md#file-key). This means that a `transit` key is used as the recipient and identity. This has the advantage that the wrap key never leaves the vault server and is also unknown to the user.
+**age-plugin-vault** is a plugin for the [age](https://github.com/FiloSottile/age) encryption tool that uses [HashiCorp Vault's Transit secrets engine](https://developer.hashicorp.com/vault/docs/secrets/transit) to encrypt and decrypt the age [file key](https://github.com/C2SP/C2SP/blob/main/age.md#file-key). This means that a `transit` key is used to encrypt the file key and is also used as the recipient and identity. This has the advantage that the wrap key (i.e., the `transit` key) never leaves the vault server and is also unknown to the user. Another advantage is that the `transit` key can be easily rotated.
 
 ---
 
