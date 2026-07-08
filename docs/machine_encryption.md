@@ -16,8 +16,12 @@ This guide demonstrates a secure workflow for managing machine credentials using
 sequenceDiagram
     actor Admin as Admin/CI
     participant Vault
-    participant Keyring as Linux Keyring
-    actor Machine as Target Machine
+    box rgb(245, 245, 245) Target Machine
+        participant Machine as Software/Script
+        participant Keyring as Linux Keyring
+    end
+
+    participant Storage as S3 Storage
 
     Note over Admin,Machine: Part 1: Setup (Trusted Party)
     
@@ -48,8 +52,12 @@ sequenceDiagram
     
     Machine->>Keyring: 10. Store Vault Token in keyring
     Keyring-->>Machine: ✓ Stored
-    
+
     Note over Machine: Machine ready for Vault operations
+
+    Keyring->>Machine: 11. Encrypt data with age-plugin-vault/age using Vault token from Linux Keyring
+    Machine->>Storage: 12. Upload encrypted file to S3 storage
+
 ```
 
 ---
@@ -208,6 +216,7 @@ Encrypting data
 ```bash
 age -e -i identity.txt -o file.age file
 ```
+The encrypted file can now be uploaded to S3 storage, for example.
 
 Decrypting data
 ```bash
@@ -232,6 +241,15 @@ If the wrapping token is not unwrapped within the specified `-wrap-ttl` period (
 
 ### ✓ Tamper Detection
 If an attacker intercepts and unwraps the token before the legitimate machine, the legitimate unwrap will fail. This immediately alerts you that a security breach has occurred.
+
+### ✓ Secure Token Storage
+The vault token and the secret_id are securely stored in the Linux keyring (they are only available in memory).
+
+### ✓ Secure  Key Storage
+The `transit` key never leaves the vault server and is also unknown to the machine.
+
+### ✓ Key Rotation
+The `transit` key can be easily rotated.
 
 ### ✓ Verify Token Validity (Without Unwrapping)
 Check if a token is still valid without consuming it:
