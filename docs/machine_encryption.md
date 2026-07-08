@@ -55,7 +55,7 @@ sequenceDiagram
 
     Note over Machine: Machine ready for Vault operations
 
-    Keyring->>Machine: 11. Encrypt data with age-plgin-vault/age using Vault token from Linux Keyring
+    Keyring->>Machine: 11. Encrypt data with age-plugin-vault/age using Vault token from Linux Keyring
     Machine->>Storage: 12. Upload encrypted file to S3 storage
 
 ```
