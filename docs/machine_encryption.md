@@ -55,10 +55,8 @@ sequenceDiagram
 
     Note over Machine: Machine ready for Vault operations
 
-    Machine->>Machine: 11. Prepare ~/.vault-token for age-plugin-vault
-    Machine->>Machine: 12. Generate identity.txt with age-plugin-vault
-    Machine->>Machine: 13. Encrypt data with age using Vault token from Linux Keyring
-    Machine->>Storage: 14. Upload encrypted file to S3 storage
+    Keyring->>Machine: 11. Encrypt data with age using Vault token from Linux Keyring
+    Machine->>Storage: 12. Upload encrypted file to S3 storage
 
 ```
 
