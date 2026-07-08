@@ -17,7 +17,7 @@ sequenceDiagram
     actor Admin as Admin/CI
     participant Vault
     box rgb(245, 245, 245) Target Machine
-        participant Machine as Target Machine
+        participant Machine as Software/Script
         participant Keyring as Linux Keyring
     end
 
